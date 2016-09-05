@@ -6,6 +6,8 @@
 
 #ifndef __PPOS_DATA__
 #define __PPOS_DATA__
+#define STACKSIZE 32768
+#include <ucontext.h>
 
 // Estrutura que define uma tarefa
 typedef struct task_t
