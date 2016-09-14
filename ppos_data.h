@@ -21,6 +21,8 @@ typedef struct task_t
     int tid ;                      // ID da tarefa
     ucontext_t context;
     int status;
+    int priority;
+    int aging;
 } task_t ;
 
 // estrutura que define um semáforo

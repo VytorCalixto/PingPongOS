@@ -16,13 +16,27 @@ int lastId = 0;
 task_t *readyQueue;
 
 static task_t *scheduler() {
-    task_t *next, *task;
-    // FCFS
-    next = readyQueue;
-    task = (task_t *) queue_remove((queue_t **) &readyQueue, (queue_t *) next);
+    task_t *aux, *task;
+    task = readyQueue;
+    aux = readyQueue->next;
+    while(aux != readyQueue) {
+        #ifdef DEBUG
+        printf("id:%d tp:%d - ta:%d\tid:%d ap:%d - aa:%d\n", task->tid, task->priority, task->aging, aux->tid, aux->priority, aux->aging);
+        #endif
+        if((aux->priority + aux->aging) < (task->priority + task->aging)) {
+            --(task->aging);
+            task = aux;
+        } else {
+            --(aux->aging);
+        }
+        aux = aux->next;
+    }
     #ifdef DEBUG
-    printf("scheduler: escolhida tarefa %d\n", task->tid);
+    printf("scheduler: escolhida tarefa %d com prioridade %d (p: %d + a: %d)\n",
+        task->tid, task->priority + task->aging, task->priority, task->aging);
     #endif
+    task->aging = 0;
+    queue_remove((queue_t **) &readyQueue, (queue_t *) task);
     return task;
 }
 
@@ -31,7 +45,7 @@ void dispatcher_body () {
 
     while (queue_size((queue_t *)readyQueue) > 0) {
         #ifdef DEBUG
-        printf("dispatcher: readQueue size %d\n", queue_size((queue_t *)readyQueue));
+        printf("dispatcher: ready queue size %d\n", queue_size((queue_t *)readyQueue));
         #endif
         next = scheduler() ;  // scheduler é uma função
         if (next) {
@@ -46,6 +60,7 @@ void dispatcher_body () {
         }
     }
     task_exit(0) ; // encerra a tarefa dispatcher
+    task_switch(MainContext);
 }
 
 void ppos_init() {
@@ -77,12 +92,16 @@ int task_create(task_t *task, void (*start_routine)(void *),  void *arg) {
     getcontext(&(task->context));
     stack = malloc(STACKSIZE);
     if(stack) {
+        task->next = NULL;
+        task->prev = NULL;
         task->context.uc_stack.ss_sp = stack;
         task->context.uc_stack.ss_size = STACKSIZE;
         task->context.uc_stack.ss_flags = 0;
         task->context.uc_link = 0;
         task->tid = ++lastId;
         task->status = READY;
+        task->priority = 0;
+        task->aging = 0;
         makecontext(&(task->context), (void*)(start_routine), 1, arg);
         // Add task to ready queue
         queue_append((queue_t **) &readyQueue, (queue_t *) task);
@@ -115,6 +134,10 @@ void task_exit(int exit_code) {
     #endif
     currentTask->status = FINISHED;
     // free task
+    // TODO: free it properly
+    if(currentTask->tid != 1) {
+        free(currentTask->context.uc_stack.ss_sp);
+    }
     task_switch(&dispatcher);
 }
 
@@ -143,4 +166,22 @@ void task_yield() {
     printf("task_yield: tarefa %d liberou o processador\n", currentTask->tid);
     #endif
     task_switch(&dispatcher);
+}
+
+void task_setprio (task_t *task, int prio) {
+    if(prio < -20 || prio > 20) {
+        return;
+    }
+
+    if(!task) {
+        task = currentTask;
+    }
+    #ifdef DEBUG
+    printf("task_setprio: tarefa %d ganhou prioridade %d\n", task->tid, prio);
+    #endif
+    task->priority = prio;
+}
+
+int task_getprio (task_t *task) {
+    return (task) ? task->priority : currentTask->priority;
 }
