@@ -9,12 +9,18 @@
 #define STACKSIZE 32768
 #include <ucontext.h>
 
+#define FINISHED 0
+#define READY 1
+#define SUSPENDED 2
+#define RUNNING 3
+
 // Estrutura que define uma tarefa
 typedef struct task_t
 {
     struct task_t *prev, *next ;   // para usar com a biblioteca de filas (cast)
     int tid ;                      // ID da tarefa
     ucontext_t context;
+    int status;
 } task_t ;
 
 // estrutura que define um semáforo
