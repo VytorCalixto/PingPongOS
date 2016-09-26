@@ -8,21 +8,37 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ucontext.h>
+#include <signal.h>
+#include <sys/time.h>
 
-int lastId = 0;
+int LastId = 0;
 task_t MainContext;
 task_t dispatcher;
 task_t *currentTask;
 task_t *readyQueue;
+
+// estrutura que define um tratador de sinal
+struct sigaction action;
+
+// estrutura de inicialização to timer
+struct itimerval timer;
+
+void timerHandler(int signum) {
+    if (signum != 14) {
+        return;
+    }
+    if(currentTask->type == USER_TASK) {
+        if(--(currentTask->ticks) <= 0) {
+            task_switch(&dispatcher);
+        }
+    }
+}
 
 static task_t *scheduler() {
     task_t *aux, *task;
     task = readyQueue;
     aux = readyQueue->next;
     while(aux != readyQueue) {
-        #ifdef DEBUG
-        printf("id:%d tp:%d - ta:%d\tid:%d ap:%d - aa:%d\n", task->tid, task->priority, task->aging, aux->tid, aux->priority, aux->aging);
-        #endif
         if((aux->priority + aux->aging) < (task->priority + task->aging)) {
             --(task->aging);
             task = aux;
@@ -31,12 +47,13 @@ static task_t *scheduler() {
         }
         aux = aux->next;
     }
+    task->aging = 0;
+    queue_remove((queue_t **) &readyQueue, (queue_t *) aux);
+    task->ticks = SYSTEM_TICKS;
     #ifdef DEBUG
     printf("scheduler: escolhida tarefa %d com prioridade %d (p: %d + a: %d)\n",
         task->tid, task->priority + task->aging, task->priority, task->aging);
     #endif
-    task->aging = 0;
-    queue_remove((queue_t **) &readyQueue, (queue_t *) task);
     return task;
 }
 
@@ -44,9 +61,6 @@ void dispatcher_body () {
     task_t *next;
 
     while (queue_size((queue_t *)readyQueue) > 0) {
-        #ifdef DEBUG
-        printf("dispatcher: ready queue size %d\n", queue_size((queue_t *)readyQueue));
-        #endif
         next = scheduler() ;  // scheduler é uma função
         if (next) {
             // ações antes de lançar a tarefa "next", se houverem
@@ -68,7 +82,7 @@ void ppos_init() {
     /* desativa o buffer da saida padrao (stdout), usado pela função printf */
     setvbuf(stdout, 0, _IONBF, 0);
     // main id is set as 0
-    MainContext.tid = lastId;
+    MainContext.tid = LastId;
     // currentTask is set to the main
     currentTask = &MainContext;
 
@@ -77,12 +91,42 @@ void ppos_init() {
     printf("ppos_init: Inicializando dispatcher\n") ;
     #endif
     task_create(&dispatcher, dispatcher_body, "dispatcher");
+    dispatcher.type = SYSTEM_TASK;
 
     // Ready queue
     readyQueue = NULL;
 
     #ifdef DEBUG
     printf("ppos_init: Dispatcher inicializado\n");
+    #endif
+
+    action.sa_handler = timerHandler;
+    sigemptyset (&action.sa_mask) ;
+    action.sa_flags = 0 ;
+    if (sigaction (SIGALRM, &action, 0) < 0)
+    {
+      perror ("Erro em sigaction: ") ;
+      exit (1) ;
+    }
+
+    // ajusta valores do temporizador
+    timer.it_value.tv_usec = 1000;      // primeiro disparo, em micro-segundos
+    timer.it_value.tv_sec  = 0;      // primeiro disparo, em segundos
+    timer.it_interval.tv_usec = 1000;   // disparos subsequentes, em micro-segundos
+    timer.it_interval.tv_sec  = 0;   // disparos subsequentes, em segundos
+
+    // arma o temporizador ITIMER_REAL (vide man setitimer)
+    if (setitimer (ITIMER_REAL, &timer, 0) < 0)
+    {
+      perror ("Erro em setitimer: ") ;
+      exit (1) ;
+    }
+
+    #ifdef DEBUG
+    printf("ppos_init: Timer inicializado\n");
+    #endif
+
+    #ifdef DEBUG
     printf("ppos_init: Sistema iniciado\n") ;
     #endif
 }
@@ -98,10 +142,12 @@ int task_create(task_t *task, void (*start_routine)(void *),  void *arg) {
         task->context.uc_stack.ss_size = STACKSIZE;
         task->context.uc_stack.ss_flags = 0;
         task->context.uc_link = 0;
-        task->tid = ++lastId;
+        task->tid = ++LastId;
         task->status = READY;
         task->priority = 0;
         task->aging = 0;
+        task->type = USER_TASK;
+        task->ticks = 0;
         makecontext(&(task->context), (void*)(start_routine), 1, arg);
         // Add task to ready queue
         queue_append((queue_t **) &readyQueue, (queue_t *) task);

@@ -9,10 +9,17 @@
 #define STACKSIZE 32768
 #include <ucontext.h>
 
+// Task status
 #define FINISHED 0
 #define READY 1
 #define SUSPENDED 2
 #define RUNNING 3
+
+// Task "type"
+#define SYSTEM_TASK 0
+#define USER_TASK 1
+
+#define SYSTEM_TICKS 20
 
 // Estrutura que define uma tarefa
 typedef struct task_t
@@ -23,6 +30,8 @@ typedef struct task_t
     int status;
     int priority;
     int aging;
+    int type;
+    int ticks;
 } task_t ;
 
 // estrutura que define um semáforo
