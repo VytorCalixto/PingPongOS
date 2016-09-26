@@ -27,11 +27,13 @@ typedef struct task_t
     struct task_t *prev, *next ;   // para usar com a biblioteca de filas (cast)
     int tid ;                      // ID da tarefa
     ucontext_t context;
-    int status;
+    int status; // Task Status
     int priority;
-    int aging;
-    int type;
+    int aging; // Dynamic priority
+    int type; // Task type (system or user)
+    // Time
     int ticks;
+    unsigned int exe_init_time, exe_end_time, proc_time, activations;
 } task_t ;
 
 // estrutura que define um semáforo

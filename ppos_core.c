@@ -11,7 +11,7 @@
 #include <signal.h>
 #include <sys/time.h>
 
-int LastId = 0;
+int LastId = 0, Ticks = 0;
 task_t MainContext;
 task_t dispatcher;
 task_t *currentTask;
@@ -27,6 +27,7 @@ void timerHandler(int signum) {
     if (signum != 14) {
         return;
     }
+    ++Ticks;
     if(currentTask->type == USER_TASK) {
         if(--(currentTask->ticks) <= 0) {
             task_switch(&dispatcher);
@@ -47,14 +48,13 @@ static task_t *scheduler() {
         }
         aux = aux->next;
     }
-    task->aging = 0;
-    queue_remove((queue_t **) &readyQueue, (queue_t *) aux);
-    task->ticks = SYSTEM_TICKS;
     #ifdef DEBUG
     printf("scheduler: escolhida tarefa %d com prioridade %d (p: %d + a: %d)\n",
         task->tid, task->priority + task->aging, task->priority, task->aging);
     #endif
-    return task;
+    task->ticks = SYSTEM_TICKS;
+    task->aging = 0;
+    return (task_t *) queue_remove((queue_t **) &readyQueue, (queue_t *) task);
 }
 
 void dispatcher_body () {
@@ -65,8 +65,14 @@ void dispatcher_body () {
         if (next) {
             // ações antes de lançar a tarefa "next", se houverem
             next->status = RUNNING;
+            unsigned int t1 = systime();
+            next->activations++;
+
             task_switch (next) ; // transfere controle para a tarefa "next"
+
             // ações após retornar da tarefa "next", se houverem
+            next->proc_time += (systime() - t1);
+            dispatcher.activations++;
             if(next->status == RUNNING) {
                 next->status = READY;
                 queue_append((queue_t **) &readyQueue, (queue_t *) next);
@@ -83,6 +89,7 @@ void ppos_init() {
     setvbuf(stdout, 0, _IONBF, 0);
     // main id is set as 0
     MainContext.tid = LastId;
+    MainContext.type = SYSTEM_TASK;
     // currentTask is set to the main
     currentTask = &MainContext;
 
@@ -148,6 +155,8 @@ int task_create(task_t *task, void (*start_routine)(void *),  void *arg) {
         task->aging = 0;
         task->type = USER_TASK;
         task->ticks = 0;
+        task->exe_init_time = systime();
+        task->proc_time = task->activations = 0;
         makecontext(&(task->context), (void*)(start_routine), 1, arg);
         // Add task to ready queue
         queue_append((queue_t **) &readyQueue, (queue_t *) task);
@@ -178,6 +187,10 @@ void task_exit(int exit_code) {
     printf("task_exit: tarefa %d sendo encerrada\n", currentTask->tid);
     #endif
     currentTask->status = FINISHED;
+    currentTask->exe_end_time = systime();
+    printf("Task %d exit: execution time %d ms, processor time %d ms, %d activations\n",
+        currentTask->tid, currentTask->exe_end_time - currentTask->exe_init_time,
+        currentTask->proc_time, currentTask->activations);
     (currentTask->tid!=1) ? task_switch(&dispatcher) : task_switch(&MainContext);
 }
 
@@ -208,7 +221,7 @@ void task_yield() {
     task_switch(&dispatcher);
 }
 
-void task_setprio (task_t *task, int prio) {
+void task_setprio(task_t *task, int prio) {
     if(prio < -20 || prio > 20) {
         return;
     }
@@ -224,4 +237,8 @@ void task_setprio (task_t *task, int prio) {
 
 int task_getprio (task_t *task) {
     return (task) ? task->priority : currentTask->priority;
+}
+
+unsigned int systime() {
+    return Ticks;
 }
