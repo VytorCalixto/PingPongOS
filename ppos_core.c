@@ -9,10 +9,10 @@
 #include <stdlib.h>
 #include <ucontext.h>
 
-task_t *MainContext;
-task_t *currentTask;
-task_t dispatcher;
 int lastId = 0;
+task_t MainContext;
+task_t dispatcher;
+task_t *currentTask;
 task_t *readyQueue;
 
 static task_t *scheduler() {
@@ -52,25 +52,25 @@ void dispatcher_body () {
             // ações antes de lançar a tarefa "next", se houverem
             next->status = RUNNING;
             task_switch (next) ; // transfere controle para a tarefa "next"
+            // ações após retornar da tarefa "next", se houverem
             if(next->status == RUNNING) {
                 next->status = READY;
                 queue_append((queue_t **) &readyQueue, (queue_t *) next);
+            } else if (next->status == FINISHED) {
+                    free(next->context.uc_stack.ss_sp);
             }
-            // ações após retornar da tarefa "next", se houverem
         }
     }
-    task_exit(0) ; // encerra a tarefa dispatcher
-    task_switch(MainContext);
+    task_exit(0);
 }
 
 void ppos_init() {
     /* desativa o buffer da saida padrao (stdout), usado pela função printf */
     setvbuf(stdout, 0, _IONBF, 0);
-    MainContext = (task_t*) malloc(sizeof(struct task_t));
     // main id is set as 0
-    MainContext->tid = lastId;
+    MainContext.tid = lastId;
     // currentTask is set to the main
-    currentTask = MainContext;
+    currentTask = &MainContext;
 
     // Dispatcher
     #ifdef DEBUG
@@ -120,7 +120,6 @@ int task_switch(task_t *task) {
     #ifdef DEBUG
     printf ("task_switch: trocando contexto %d -> %d\n", currentTask->tid, task->tid) ;
     #endif
-    // remove task from ready queue
 
     task_t *oldTask = currentTask;
     currentTask = task;
@@ -133,12 +132,7 @@ void task_exit(int exit_code) {
     printf("task_exit: tarefa %d sendo encerrada\n", currentTask->tid);
     #endif
     currentTask->status = FINISHED;
-    // free task
-    // TODO: free it properly
-    if(currentTask->tid != 1) {
-        free(currentTask->context.uc_stack.ss_sp);
-    }
-    task_switch(&dispatcher);
+    (currentTask->tid!=1) ? task_switch(&dispatcher) : task_switch(&MainContext);
 }
 
 int task_id() {
