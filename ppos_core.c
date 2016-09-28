@@ -40,6 +40,9 @@ static task_t *scheduler() {
     task = readyQueue;
     aux = readyQueue->next;
     while(aux != readyQueue) {
+        #ifdef DEBUG
+        printf("id:%d tp:%d - ta:%d\tid:%d ap:%d - aa:%d\n", task->tid, task->priority, task->aging, aux->tid, aux->priority, aux->aging);
+        #endif
         if((aux->priority + aux->aging) < (task->priority + task->aging)) {
             --(task->aging);
             task = aux;
@@ -68,6 +71,10 @@ void dispatcher_body () {
             unsigned int t1 = systime();
             next->activations++;
 
+            #ifdef DEBUG
+            printf("dispatcher: indo para a tarefa %d\n", next->tid);
+            #endif
+
             task_switch (next) ; // transfere controle para a tarefa "next"
 
             // ações após retornar da tarefa "next", se houverem
@@ -87,10 +94,12 @@ void dispatcher_body () {
 void ppos_init() {
     /* desativa o buffer da saida padrao (stdout), usado pela função printf */
     setvbuf(stdout, 0, _IONBF, 0);
+    readyQueue = NULL;
     // main id is set as 0
     MainContext.tid = LastId;
-    MainContext.type = SYSTEM_TASK;
-    // currentTask is set to the main
+    MainContext.type = USER_TASK;
+    // Add main to readyQueue
+    queue_append((queue_t **) &readyQueue, (queue_t *) &MainContext);
     currentTask = &MainContext;
 
     // Dispatcher
@@ -99,10 +108,6 @@ void ppos_init() {
     #endif
     task_create(&dispatcher, dispatcher_body, "dispatcher");
     dispatcher.type = SYSTEM_TASK;
-
-    // Ready queue
-    readyQueue = NULL;
-
     #ifdef DEBUG
     printf("ppos_init: Dispatcher inicializado\n");
     #endif
@@ -130,12 +135,13 @@ void ppos_init() {
     }
 
     #ifdef DEBUG
-    printf("ppos_init: Timer inicializado\n");
+    printf("ppos_init: Timer iniciado\n");
     #endif
 
     #ifdef DEBUG
     printf("ppos_init: Sistema iniciado\n") ;
     #endif
+    task_switch(&dispatcher);
 }
 
 int task_create(task_t *task, void (*start_routine)(void *),  void *arg) {
@@ -158,8 +164,10 @@ int task_create(task_t *task, void (*start_routine)(void *),  void *arg) {
         task->exe_init_time = systime();
         task->proc_time = task->activations = 0;
         makecontext(&(task->context), (void*)(start_routine), 1, arg);
-        // Add task to ready queue
-        queue_append((queue_t **) &readyQueue, (queue_t *) task);
+        // Add task to ready queue if it's not the dispatcher
+        if(task->tid != 1) {
+            queue_append((queue_t **) &readyQueue, (queue_t *) task);
+        }
         #ifdef DEBUG
         printf ("task_create: criou tarefa %d\n", task->tid) ;
         #endif
