@@ -41,7 +41,7 @@ static task_t *scheduler() {
     aux = readyQueue->next;
     while(aux != readyQueue) {
         #ifdef DEBUG
-        printf("id:%d tp:%d - ta:%d\tid:%d ap:%d - aa:%d\n", task->tid, task->priority, task->aging, aux->tid, aux->priority, aux->aging);
+        // printf("id:%d tp:%d - ta:%d\tid:%d ap:%d - aa:%d\n", task->tid, task->priority, task->aging, aux->tid, aux->priority, aux->aging);
         #endif
         if((aux->priority + aux->aging) < (task->priority + task->aging)) {
             --(task->aging);
@@ -84,7 +84,7 @@ void dispatcher_body () {
                 next->status = READY;
                 queue_append((queue_t **) &readyQueue, (queue_t *) next);
             } else if (next->status == FINISHED) {
-                    free(next->context.uc_stack.ss_sp);
+                free(next->context.uc_stack.ss_sp);
             }
         }
     }
@@ -191,11 +191,20 @@ int task_switch(task_t *task) {
 }
 
 void task_exit(int exit_code) {
+    currentTask->returnValue = exit_code;
     #ifdef DEBUG
-    printf("task_exit: tarefa %d sendo encerrada\n", currentTask->tid);
+    printf("task_exit: tarefa %d sendo encerrada com status %d\n", currentTask->tid, exit_code);
     #endif
     currentTask->status = FINISHED;
     currentTask->exe_end_time = systime();
+
+    // Join queue
+    task_t *aux = currentTask->joinQueue;
+    while(aux != NULL) {
+        task_resume((task_t *) queue_remove((queue_t **) &currentTask->joinQueue, (queue_t *) aux));
+        aux = currentTask->joinQueue;
+    }
+
     printf("Task %d exit: execution time %d ms, processor time %d ms, %d activations\n",
         currentTask->tid, currentTask->exe_end_time - currentTask->exe_init_time,
         currentTask->proc_time, currentTask->activations);
@@ -210,15 +219,21 @@ void task_suspend (task_t *task, task_t **queue) {
     if(!task) {
         task = currentTask;
     }
+    #ifdef DEBUG
+    printf("task_suspend: suspendendo tarefa %d\n", task->tid);
+    #endif
     task->status = SUSPENDED;
     // remove task from current queue
-    queue_remove((queue_t **) &readyQueue, (queue_t *) task);
+    // queue_remove((queue_t **) &readyQueue, (queue_t *) task);
     queue_append((queue_t **) queue, (queue_t *) task);
 }
 
 void task_resume (task_t *task) {
     task->status = READY;
     // inserts in ready queue
+    #ifdef DEBUG
+    printf("task_resume: resumindo tarefa %d\n", task->tid);
+    #endif
     queue_append((queue_t **) &readyQueue, (queue_t *) task);
 }
 
@@ -249,4 +264,13 @@ int task_getprio (task_t *task) {
 
 unsigned int systime() {
     return Ticks;
+}
+
+int task_join (task_t *task) {
+    if(!task) {
+        return -1;
+    }
+    task_suspend(currentTask, &task->joinQueue);
+    task_switch(&dispatcher);
+    return task->returnValue;
 }
