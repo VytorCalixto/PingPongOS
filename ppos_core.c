@@ -15,7 +15,7 @@ int LastId = 0, Ticks = 0;
 task_t MainContext;
 task_t dispatcher;
 task_t *currentTask;
-task_t *readyQueue;
+task_t *readyQueue, *sleepQueue;
 
 // estrutura que define um tratador de sinal
 struct sigaction action;
@@ -36,6 +36,9 @@ void timerHandler(int signum) {
 }
 
 static task_t *scheduler() {
+    if(queue_size((queue_t *)readyQueue) == 0) {
+        return NULL;
+    }
     task_t *aux, *task;
     task = readyQueue;
     aux = readyQueue->next;
@@ -63,7 +66,28 @@ static task_t *scheduler() {
 void dispatcher_body () {
     task_t *next;
 
-    while (queue_size((queue_t *)readyQueue) > 0) {
+    while (queue_size((queue_t *)readyQueue) > 0 || queue_size((queue_t *)sleepQueue) > 0) {
+        unsigned int tDispatcher = systime();
+        if(queue_size((queue_t *) sleepQueue) > 0) {
+            task_t *task = sleepQueue, *aux = task->next;
+            for(task = sleepQueue; task->next != sleepQueue; task=aux) {
+                aux = task->next;
+                if(task->wakeup_time <= Ticks) {
+                    #ifdef DEBUG
+                    printf("timerHandler: acordando tarefa %d (%d) em %d\n", task->tid, task->wakeup_time, Ticks);
+                    #endif
+                    task_resume((task_t *) queue_remove((queue_t **) &sleepQueue, (queue_t *) task));
+                }
+            }
+            if(sleepQueue->next == sleepQueue) {
+                if(task->wakeup_time <= Ticks) {
+                    #ifdef DEBUG
+                    printf("timerHandler: acordando tarefa %d (%d) em %d\n", task->tid, task->wakeup_time, Ticks);
+                    #endif
+                    task_resume((task_t *) queue_remove((queue_t **) &sleepQueue, (queue_t *) task));
+                }
+            }
+        }
         next = scheduler() ;  // scheduler é uma função
         if (next) {
             // ações antes de lançar a tarefa "next", se houverem
@@ -74,7 +98,6 @@ void dispatcher_body () {
             #ifdef DEBUG
             printf("dispatcher: indo para a tarefa %d\n", next->tid);
             #endif
-
             task_switch (next) ; // transfere controle para a tarefa "next"
 
             // ações após retornar da tarefa "next", se houverem
@@ -87,6 +110,7 @@ void dispatcher_body () {
                 free(next->context.uc_stack.ss_sp);
             }
         }
+        dispatcher.proc_time += (systime() - tDispatcher);
     }
     task_exit(0);
 }
@@ -163,6 +187,7 @@ int task_create(task_t *task, void (*start_routine)(void *),  void *arg) {
         task->ticks = 0;
         task->exe_init_time = systime();
         task->proc_time = task->activations = 0;
+        task->wakeup_time = 0;
         makecontext(&(task->context), (void*)(start_routine), 1, arg);
         // Add task to ready queue if it's not the dispatcher
         if(task->tid != 1) {
@@ -270,7 +295,21 @@ int task_join (task_t *task) {
     if(!task) {
         return -1;
     }
+    if(task->status == FINISHED) {
+        return task->returnValue;
+    }
     task_suspend(currentTask, &task->joinQueue);
     task_switch(&dispatcher);
     return task->returnValue;
+}
+
+void task_sleep (int t) {
+    if(t == 0) return;
+    currentTask->status = SUSPENDED;
+    currentTask->wakeup_time = t*1000 + Ticks;
+    queue_append((queue_t **) &sleepQueue, (queue_t *) currentTask);
+    #ifdef DEBUG
+    printf("task_sleep: tarefa %d dorme até %d\n", currentTask->tid, currentTask->wakeup_time);
+    #endif
+    task_switch(&dispatcher);
 }

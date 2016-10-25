@@ -36,6 +36,7 @@ typedef struct task_t
     unsigned int exe_init_time, exe_end_time, proc_time, activations;
     int returnValue;
     struct task_t *joinQueue;
+    unsigned int wakeup_time;
 } task_t ;
 
 // estrutura que define um semáforo
