@@ -89,11 +89,14 @@ void dispatcher_body () {
             }
         }
         next = scheduler() ;  // scheduler é uma função
+        dispatcher.proc_time += (systime() - tDispatcher);
         if (next) {
+            tDispatcher = systime();
             // ações antes de lançar a tarefa "next", se houverem
             next->status = RUNNING;
             unsigned int t1 = systime();
             next->activations++;
+            dispatcher.proc_time += (systime() - tDispatcher);
 
             #ifdef DEBUG
             printf("dispatcher: indo para a tarefa %d\n", next->tid);
@@ -101,6 +104,7 @@ void dispatcher_body () {
             task_switch (next) ; // transfere controle para a tarefa "next"
 
             // ações após retornar da tarefa "next", se houverem
+            tDispatcher = systime();
             next->proc_time += (systime() - t1);
             dispatcher.activations++;
             if(next->status == RUNNING) {
@@ -109,8 +113,8 @@ void dispatcher_body () {
             } else if (next->status == FINISHED) {
                 free(next->context.uc_stack.ss_sp);
             }
+            dispatcher.proc_time += (systime() - tDispatcher);
         }
-        dispatcher.proc_time += (systime() - tDispatcher);
     }
     task_exit(0);
 }
