@@ -382,3 +382,35 @@ int sem_destroy (semaphore_t *s) {
     }
     return 0;
 }
+
+int mqueue_create (mqueue_t *queue, int max_msgs, int msg_size) {
+    if(max_msgs <= 0) return -1;
+    if(msg_size <= 0) return -1;
+    if(queue == NULL) return -1;
+    queue->size = 0;
+    queue->max_msgs = max_msgs;
+    queue->msg_size = msg_size;
+    queue->msgs = malloc(max_msgs*msg_size);
+    queue->head = queue->tail = 0;
+    sem_create(queue->write, 1);
+    sem_create(queue->read, 1);
+    queue->write_tasks = NULL;
+    queue->read_tasks = NULL;
+}
+
+int mqueue_send (mqueue_t *queue, void *msg) {
+    sem_down(queue->write);
+
+}
+
+int mqueue_recv (mqueue_t *queue, void *msg) {
+
+}
+
+int mqueue_destroy (mqueue_t *queue) {
+
+}
+
+int mqueue_msgs (mqueue_t *queue) {
+
+}
