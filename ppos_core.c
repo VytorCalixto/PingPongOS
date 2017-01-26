@@ -11,7 +11,7 @@
 #include <signal.h>
 #include <sys/time.h>
 
-int LastId = 0, Ticks = 0;
+int LastId = 0, Ticks = 0, preemption = 1;
 task_t MainContext;
 task_t dispatcher;
 task_t *currentTask;
@@ -28,7 +28,7 @@ void timerHandler(int signum) {
         return;
     }
     ++Ticks;
-    if(currentTask->type == USER_TASK) {
+    if(currentTask->type == USER_TASK && preemption == 1) {
         if(--(currentTask->ticks) <= 0) {
             task_switch(&dispatcher);
         }
@@ -258,11 +258,11 @@ void task_suspend (task_t *task, task_t **queue) {
 }
 
 void task_resume (task_t *task) {
-    task->status = READY;
     // inserts in ready queue
     #ifdef DEBUG
     printf("task_resume: resumindo tarefa %d\n", task->tid);
     #endif
+    task->status = READY;
     queue_append((queue_t **) &readyQueue, (queue_t *) task);
 }
 
@@ -316,4 +316,69 @@ void task_sleep (int t) {
     printf("task_sleep: tarefa %d dorme até %d\n", currentTask->tid, currentTask->wakeup_time);
     #endif
     task_switch(&dispatcher);
+}
+
+int sem_create (semaphore_t *s, int value) {
+    if(s == NULL) return -1;
+    if(s->live == 1) return -1; // Semáforo existente
+    s->lock = 0;
+    s->value = value;
+    s->queue = NULL;
+    s->live = 1;
+    s->returnValue = 0;
+    return 0;
+}
+
+int sem_down (semaphore_t *s) {
+    if(s == NULL) return -1;
+    if(s->live != 1) return -1;
+    preemption = 0;
+    #ifdef DEBUG
+    printf("sem_down: tarefa %d fazendo down\n", currentTask->tid);
+    #endif
+    --s->value;
+    if(s->value < 0) {
+        #ifdef DEBUG
+        printf("sem_down: tarefa %d espera semáforo\n", currentTask->tid);
+        #endif
+        task_suspend(currentTask, &(s->queue));
+        preemption = 1;
+        task_switch(&dispatcher);
+    }
+    preemption = 1;
+    return (s->returnValue == -1) ? -1 : 0;
+}
+
+int sem_up (semaphore_t *s) {
+    if(s == NULL) return -1;
+    if(s->live != 1) return -1;
+    preemption = 0;
+    #ifdef DEBUG
+    printf("sem_up: tarefa %d fazendo up\n", currentTask->tid);
+    #endif
+    ++s->value;
+    if(s->value <= 0) {
+        queue_t *aux = (queue_t *) s->queue;
+        task_t *t = (task_t *) queue_remove((queue_t **) &(s->queue), aux);
+        #ifdef DEBUG
+        printf("sem_up: tarefa %d volta a fila de prontas\n", t->tid);
+        #endif
+        task_resume(t);
+    }
+    preemption = 1;
+    return 0;
+}
+
+int sem_destroy (semaphore_t *s) {
+    if(s == NULL) return -1;
+    if(s->live != 1) return -1;
+    s->live = 0;
+    s->returnValue = -1;
+    int i;
+    for(i=queue_size((queue_t *)s->queue); i>0; --i) {
+        queue_t *aux = (queue_t *) s->queue;
+        task_t *t = (task_t *) queue_remove((queue_t **) &(s->queue), aux);
+        task_resume(t);
+    }
+    return 0;
 }
