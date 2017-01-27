@@ -5,6 +5,8 @@
 #include "ppos_data.h"
 #include "ppos.h"
 #include "queue.h"
+#include "hw_disk.h"
+#include "ppos_disk.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <ucontext.h>
@@ -57,7 +59,7 @@ static task_t *scheduler() {
     }
     #ifdef DEBUG
     printf("scheduler: escolhida tarefa %d com prioridade %d (p: %d + a: %d)\n",
-        task->tid, task->priority + task->aging, task->priority, task->aging);
+    task->tid, task->priority + task->aging, task->priority, task->aging);
     #endif
     task->ticks = SYSTEM_TICKS;
     task->aging = 0;
@@ -146,8 +148,8 @@ void ppos_init() {
     action.sa_flags = 0 ;
     if (sigaction (SIGALRM, &action, 0) < 0)
     {
-      perror ("Erro em sigaction: ") ;
-      exit (1) ;
+        perror ("Erro em sigaction: ") ;
+        exit (1) ;
     }
 
     // ajusta valores do temporizador
@@ -159,8 +161,8 @@ void ppos_init() {
     // arma o temporizador ITIMER_REAL (vide man setitimer)
     if (setitimer (ITIMER_REAL, &timer, 0) < 0)
     {
-      perror ("Erro em setitimer: ") ;
-      exit (1) ;
+        perror ("Erro em setitimer: ") ;
+        exit (1) ;
     }
 
     #ifdef DEBUG
@@ -236,8 +238,8 @@ void task_exit(int exit_code) {
     }
 
     printf("Task %d exit: execution time %d ms, processor time %d ms, %d activations\n",
-        currentTask->tid, currentTask->exe_end_time - currentTask->exe_init_time,
-        currentTask->proc_time, currentTask->activations);
+    currentTask->tid, currentTask->exe_end_time - currentTask->exe_init_time,
+    currentTask->proc_time, currentTask->activations);
     (currentTask->tid!=1) ? task_switch(&dispatcher) : task_switch(&MainContext);
 }
 
@@ -444,4 +446,62 @@ int mqueue_destroy (mqueue_t *queue) {
 int mqueue_msgs (mqueue_t *queue) {
     if(queue == NULL) return -1;
     return queue->size;
+}
+
+void diskDriverBody (void * args) {
+   while (true)
+   {
+      // obtém o semáforo de acesso ao disco
+
+      // se foi acordado devido a um sinal do disco
+      if (disco gerou um sinal)
+      {
+         // acorda a tarefa cujo pedido foi atendido
+      }
+
+      // se o disco estiver livre e houver pedidos de E/S na fila
+      if (disco_livre && (fila_disco != NULL))
+      {
+         // escolhe na fila o pedido a ser atendido, usando FCFS
+         // solicita ao disco a operação de E/S, usando disk_cmd()
+      }
+
+      // libera o semáforo de acesso ao disco
+
+      // suspende a tarefa corrente (retorna ao dispatcher)
+   }
+}
+
+int disk_mgr_init (int *num_blocks, int *block_size) {
+
+}
+
+int disk_block_read (int block, void *buffer) {
+    // obtém o semáforo de acesso ao disco
+
+    // inclui o pedido na fila_disco
+
+    if (gerente de disco está dormindo)
+    {
+        // acorda o gerente de disco (põe ele na fila de prontas)
+    }
+
+    // libera semáforo de acesso ao disco
+
+    // suspende a tarefa corrente (retorna ao dispatcher)
+}
+
+int disk_block_write (int block, void *buffer) {
+    // obtém o semáforo de acesso ao disco
+
+   // inclui o pedido na fila_disco
+
+   if (gerente de disco está dormindo)
+   {
+      // acorda o gerente de disco (põe ele na fila de prontas)
+   }
+
+   // libera semáforo de acesso ao disco
+
+   // suspende a tarefa corrente (retorna ao dispatcher)
 }
