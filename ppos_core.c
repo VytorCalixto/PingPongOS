@@ -10,6 +10,7 @@
 #include <ucontext.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <string.h>
 
 int LastId = 0, Ticks = 0, preemption = 1;
 task_t MainContext;
@@ -390,27 +391,57 @@ int mqueue_create (mqueue_t *queue, int max_msgs, int msg_size) {
     queue->size = 0;
     queue->max_msgs = max_msgs;
     queue->msg_size = msg_size;
-    queue->msgs = malloc(max_msgs*msg_size);
+    queue->msgs = malloc(sizeof(void *)*max_msgs*msg_size);
     queue->head = queue->tail = 0;
-    sem_create(queue->write, 1);
-    sem_create(queue->read, 1);
-    queue->write_tasks = NULL;
-    queue->read_tasks = NULL;
+    sem_create(&(queue->empty_spaces), max_msgs);
+    sem_create(&(queue->buffer), 1);
+    sem_create(&(queue->msg), 0);
+    return 0;
 }
 
 int mqueue_send (mqueue_t *queue, void *msg) {
-    sem_down(queue->write);
-
+    if(queue == NULL) return -1;
+    if(queue->size == -1) return -1;
+    sem_down(&(queue->empty_spaces));
+    sem_down(&(queue->buffer));
+    ++queue->size;
+    memcpy(&(queue->msgs[queue->tail]), msg, queue->msg_size);
+    queue->tail = (queue->tail + 1) % queue->max_msgs;
+    sem_up(&(queue->buffer));
+    sem_up(&(queue->msg));
+    return 0;
 }
 
 int mqueue_recv (mqueue_t *queue, void *msg) {
-
+    if(queue == NULL) return -1;
+    if(queue->size == -1) return -1;
+    sem_down(&(queue->msg));
+    sem_down(&(queue->buffer));
+    --queue->size;
+    memcpy(msg, &(queue->msgs[queue->head]), queue->msg_size);
+    queue->head = (queue->head + 1) % queue->max_msgs;
+    sem_up(&(queue->buffer));
+    sem_up(&(queue->empty_spaces));
 }
 
 int mqueue_destroy (mqueue_t *queue) {
-
+    if(queue == NULL) return -1;
+    if(queue->size == -1) return -1;
+    #ifdef DEBUG
+    printf("mqueue_destroy: Destruindo fila de mensagens\n");
+    #endif
+    free(queue->msgs);
+    sem_destroy(&(queue->empty_spaces));
+    sem_destroy(&(queue->buffer));
+    sem_destroy(&(queue->msg));
+    queue->size = -1;
+    #ifdef DEBUG
+    printf("mqueue_destroy: Fila de mensagens destruída\n");
+    #endif
+    return 0;
 }
 
 int mqueue_msgs (mqueue_t *queue) {
-
+    if(queue == NULL) return -1;
+    return queue->size;
 }

@@ -68,11 +68,10 @@ typedef struct
     int max_msgs;
     int msg_size;
     int head, tail;
-    void *msgs;
-    semaphore_t write;
-    semaphore_t read;
-    task_t write_tasks;
-    task_t read_tasks;
+    void **msgs;
+    semaphore_t empty_spaces;
+    semaphore_t buffer;
+    semaphore_t msg;
 } mqueue_t ;
 
 #endif
